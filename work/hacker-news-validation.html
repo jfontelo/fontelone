@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-9ZQPN2C53K"></script>
+    <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-9ZQPN2C53K');
+    </script>
+    <meta charset="UTF-8">
+    <title>Hacker News Data Validation — JP Fontelo</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <meta property="og:title" content="Hacker News Data Validation — JP Fontelo">
+    <meta property="og:description" content="Post-deploy BigQuery validation using a three-stage framework: table integrity, event volume, and parameter capture.">
+    <meta property="og:url" content="https://fontelone.com/work/hacker-news-validation.html">
+    <style>
+        .case-hero {
+            padding: 80px 0 0;
+        }
+        .case-inner {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 80px;
+            background-color: rgba(0, 0, 0, 0.65);
+        }
+        .screenshot-placeholder {
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            padding: 40px 24px;
+            text-align: center;
+            margin: 24px 0;
+        }
+        .screenshot-placeholder span {
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <nav class="banner banner-sticky">
+        <a href="../index.html" class="banner-logo">il fontelone</a>
+        <div class="banner-links">
+            <a href="../index.html#services">Services</a>
+            <a href="../index.html#work">Work</a>
+            <a href="../index.html#projects">Projects</a>
+            <a href="../index.html#writing">Writing</a>
+            <a href="../about.html">About</a>
+        </div>
+        <a href="mailto:jp@fontelone.com" class="banner-contact">Contact</a>
+    </nav>
+
+    <div class="case-hero">
+        <div class="case-inner">
+            <span class="case-label">Case Study / Data Validation</span>
+            <h1 class="case-title">Hacker News<br>Data Validation</h1>
+            <div class="case-meta">
+                <span>BigQuery</span>
+                <span>SQL</span>
+                <span>Looker Studio</span>
+            </div>
+
+            <!-- CONTEXT -->
+            <div class="case-section">
+                <h2 class="case-section-title">Context</h2>
+                <p>Hacker News is a social news website focusing on computer science and entrepreneurship, run by the investment fund and startup incubator Y Combinator.</p>
+                <p>The Hacker News engineering team pushed a major backend update on October 1, 2024. One month later, the task was to validate that data capture looked normal.</p>
+                <p>The constraint forced a prioritization decision: rather than trying to validate everything, the goal was to design a structured framework that covered the highest-risk surface area first.</p>
+            </div>
+            
+            <!-- FRAMEWORK OVERVIEW -->
+            <div class="case-section">
+                <h2 class="case-section-title">Framework</h2>
+                <div class="framework-grid">
+                    <div class="framework-step">
+                        <span class="step-num">Stage 01</span>
+                        <h3>Table Structure &amp; Integrity</h3>
+                        <p>Schema review, primary key validation, duplicate check, and partitioning assessment.</p>
+                    </div>
+                    <div class="framework-step">
+                        <span class="step-num">Stage 02</span>
+                        <h3>High Level Event Count</h3>
+                        <p>Volume by event type and date against a 12-month baseline to identify anomalies.</p>
+                    </div>
+                    <div class="framework-step">
+                        <span class="step-num">Stage 03</span>
+                        <h3>Event Specific Parameters</h3>
+                        <p>Null rate tracking on key parameters for the two highest-priority events: story and comment.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STAGE 01 -->
+            <div class="case-section">
+                <h2 class="case-section-title">Stage 01 / Table Structure &amp; Integrity</h2>
+                <p>Before touching any event data, I needed to understand how the table was organized and whether it could be trusted as a reliable foundation for analysis.</p>
+                <p>I examined the schema and scanned the table preview. All 14 columns are nullable except <code>type</code> and <code>id</code>, which are populated on every row. The <code>type</code> column is the event name — the primary dimension for any validation work. The <code>id</code> column is documented as the unique identifier, but there is no designated primary key enforcing that constraint.</p>
+                <p>Two queries confirmed the table's current integrity: one verified that no rows had null <code>type</code> or <code>id</code> values; the other confirmed no duplicate IDs exist at this time. Both returned clean. The absence of a primary key constraint is still a structural risk — nothing prevents duplicates from being introduced — and worth flagging for future joins against other tables.</p>
+                <p>A third finding: no partitioning column exists on the table. Working within a 1TB free tier quota, this meant full table scans on any unfiltered query. Structuring queries to filter on <code>timestamp</code> early was important for staying under quota.</p>
+
+                <span class="sql-label">Null check on type and id</span>
+                <pre><code>SELECT type, id
+FROM `bigquery-public-data.hacker_news.full`
+WHERE type IS NULL
+OR id IS NULL;</code></pre>
+
+                <span class="sql-label">Duplicate ID check</span>
+                <pre><code>SELECT
+    id,
+    COUNT(*) AS id_count
+FROM `bigquery-public-data.hacker_news.full`
+GROUP BY 1
+HAVING COUNT(*) > 1
+ORDER BY 1 DESC;</code></pre>
+            </div>
+
+            <!-- STAGE 02 -->
+            <div class="case-section">
+                <h2 class="case-section-title">Stage 02 / High Level Event Count</h2>
+                <p>With the table structure understood, the next step was validating whether event volumes looked reasonable — both in absolute terms and relative to historical patterns.</p>
+                <p>I pulled a count of events by type and date across the trailing 12 months, converting the UTC timestamp to EST. The most common event types are <code>comment</code> and <code>story</code>, which drove the prioritization for Stage 03. <code>job</code> is third but substantially lower in volume.</p>
+                <p>October 2024 hit a 12-month high in story events, with an acute spike on October 29. This kind of anomaly requires escalation before it can be interpreted. I would verify with the marketing and product teams whether there was a campaign, a viral story, or any other business reason for increased traffic. If UTM data exists, that's the first place to look. If no external explanation surfaces, it warrants deeper investigation into potential data capture issues.</p>
+                <p>One additional table-wide finding: approximately 27,000 rows are labeled as story events but carry no timestamp. This means story event counts are potentially undercounted by that amount, and the issue could be concentrated in a single period or spread across the table's history back to 2006.</p>
+
+                <!-- SCREENSHOT PLACEHOLDER -->
+                <div class="screenshot-placeholder">
+                    <span>Screenshot: Story Events — Last 12 Months (By Date)</span>
+                </div>
+
+                <span class="sql-label">Event count by type and date</span>
+                <pre><code>SELECT
+    FORMAT_DATE('%Y-%m-%d', DATE(timestamp, "America/New_York")) AS event_date,
+    type,
+    COUNT(*) AS events
+FROM `bigquery-public-data.hacker_news.full`
+GROUP BY 1, 2
+ORDER BY 1, 2 DESC;</code></pre>
+            </div>
+
+            <!-- STAGE 03 -->
+            <div class="case-section">
+                <h2 class="case-section-title">Stage 03 / Event Specific Parameters</h2>
+                <p>The final stage examined whether the parameters specific to each priority event were actually being captured. Volume can look normal while underlying field-level capture degrades — this stage is where that would surface.</p>
+
+                <p><strong>Story events.</strong> The October 29 spike in story volume coincided directly with a spike in missing <code>title</code> and <code>url</code> values. The increased load on the site may have degraded parameter capture during that window. Missing <code>text</code> was persistently high throughout the entire period — roughly 90%+ — but this appears to be a structural characteristic of story events rather than a regression, since story submissions typically don't include body text.</p>
+
+                <!-- SCREENSHOT PLACEHOLDER -->
+                <div class="screenshot-placeholder">
+                    <span>Screenshot: Missing Parameter Capture — Story Event (By Date)</span>
+                </div>
+
+                <p><strong>Comment events.</strong> Comment parameter capture showed no corresponding degradation during the October spike period. Missing <code>text</code> on comments stayed stable and low throughout the trailing 12 months, which helps isolate the parameter capture issue to the story event pipeline specifically. Notably, <code>descendants</code>, <code>ranking</code>, and <code>deleted</code> were never populated on comment events during this period — consistent with those fields being either deprecated or not applicable to the comment event type.</p>
+
+                <!-- SCREENSHOT PLACEHOLDER -->
+                <div class="screenshot-placeholder">
+                    <span>Screenshot: Missing Parameter Capture — Comment Event (By Date)</span>
+                </div>
+
+                <span class="sql-label">Story event parameter capture by date</span>
+                <pre><code>SELECT
+    FORMAT_DATE('%Y-%m-%d', DATE(timestamp, "America/New_York")) AS event_date,
+    COUNT(*) AS events,
+    COUNTIF(title IS NULL) AS missing_title,
+    COUNTIF(url IS NULL) AS missing_url,
+    COUNTIF(text IS NULL) AS missing_text,
+    COUNTIF(`by` IS NULL) AS missing_by,
+    COUNTIF(score IS NULL) AS missing_score
+FROM `bigquery-public-data.hacker_news.full`
+WHERE type = 'story'
+AND DATE(timestamp, "America/New_York") BETWEEN '2024-04-01' AND '2025-03-31'
+GROUP BY 1
+ORDER BY 1 ASC;</code></pre>
+
+                <span class="sql-label">Comment event parameter capture by date</span>
+                <pre><code>SELECT
+    FORMAT_DATE('%Y-%m-%d', DATE(timestamp, "America/New_York")) AS event_date,
+    COUNT(*) AS events,
+    COUNTIF(text IS NULL) AS missing_text,
+    COUNTIF(parent IS NULL) AS missing_parent,
+    COUNTIF(descendants IS NULL) AS missing_descendants,
+    COUNTIF(ranking IS NULL) AS missing_ranking,
+    COUNTIF(deleted IS NULL) AS missing_deleted
+FROM `bigquery-public-data.hacker_news.full`
+WHERE type = 'comment'
+AND DATE(timestamp, "America/New_York") BETWEEN '2024-04-01' AND '2025-03-31'
+GROUP BY 1
+ORDER BY 1 ASC;</code></pre>
+            </div>
+
+            <!-- DASHBOARD -->
+            <div class="case-section">
+                <h2 class="case-section-title">Dashboard</h2>
+                <p>The full validation dashboard is live in Looker Studio, covering missing parameter rates by date for both story and comment events across the trailing 12 months.</p>
+                <a href="https://datastudio.google.com/reporting/e853f56f-b00c-4080-891a-4641afecaf08" target="_blank" class="section-cta" style="margin-top: 24px;">View Live Dashboard</a>
+            </div>
+
+            <!-- AUTOMATION -->
+            <div class="case-section">
+                <h2 class="case-section-title">Automation Enhancements</h2>
+                <p>Ad-hoc validation after every major release isn't scalable. The right answer is a set of automated alerts on the daily ETL process that would have flagged the October 29 spike proactively.</p>
+                <p>The alert logic would monitor two signals: variance in daily event volume by type (a threshold like +/- 50% of the rolling daily average would have caught the Oct 29 story spike), and variance in missing parameter rates on key fields like <code>title</code> and <code>url</code> for story events. Alerts would route to a monitoring Slack channel or email, with a daily validation dashboard as a secondary review layer following each data load.</p>
+            </div>
+
+            <!-- RETRO -->
+            <div class="case-section">
+                <h2 class="case-section-title">Retrospective</h2>
+                <p>The exploration and structuring phase took the most time — but that investment paid off. Once the framework was clear, execution moved quickly. Spending time on the approach before writing queries meant every query had a defined purpose rather than being exploratory.</p>
+                <p>The single-table architecture on <code>hacker_news.full</code> is worth a structural critique: storing multiple event types in one table produces a sparse schema with high null density across columns. This is both a query performance issue and a maintenance cost. Separate event tables would be preferable, and the absence of a primary key constraint creates real join risk if this table is ever used in a broader data model.</p>
+                <p>BigQuery's interface splits across Google Cloud Console and the BigQuery environment, which adds navigation friction during multi-step validation work. Query history is also separated from table exploration, and results can't be saved or managed directly in the tool. For organized ad-hoc work, exporting to Google Sheets mid-analysis was the workaround.</p>
+            </div>
+
+            <div class="cta-row">
+                <a href="../index.html#work" class="back-link">← Back to Work</a>
+                <span class="divider">|</span>
+                <a href="mailto:jp@fontelone.com" class="section-cta" style="margin-top: 0;">Get in Touch</a>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
