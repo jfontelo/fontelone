@@ -327,7 +327,7 @@ a.banner-logo {
     font-size: 11px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.65)
     margin: 0 0 20px;
     padding-bottom: 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
@@ -381,8 +381,7 @@ a.banner-logo {
     font-size: 16px;
     line-height: 1.8;
     color: rgba(255, 255, 255, 0.85);
-    padding: 16px 0 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0 0 0 20px;
     position: relative;
 }
 .findings-list li::before {
@@ -399,9 +398,9 @@ a.banner-logo {
 pre {
     background-color: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 24px;
+    padding: 8px;
     overflow-x: auto;
-    margin: 0 0 24px;
+    margin: 0 0 8px;
 }
 pre:last-child {
     margin-bottom: 0;
@@ -417,7 +416,7 @@ code {
     font-size: 11px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.6);
     display: block;
     margin-bottom: 10px;
 }
@@ -444,3 +443,23 @@ code {
 .divider {
     color: rgba(255, 255, 255, 0.2);
 }
+.case-section p strong {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 1);
+}
+.case-section p strong {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 1);
+    display: block;
+    margin-top: 32px;
+    margin-bottom: 12px;
+}
+
